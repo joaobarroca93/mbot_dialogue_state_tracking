@@ -1,0 +1,6 @@
+#!/usr/bin/env python
+
+import mbot_dst_rule_based_ros.mbot_dst_rule_based_node
+
+if __name__ == '__main__':
+ mbot_dst_rule_based_ros.mbot_dst_rule_based_node.main()

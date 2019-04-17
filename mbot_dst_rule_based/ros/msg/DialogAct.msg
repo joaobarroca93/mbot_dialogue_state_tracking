@@ -1,0 +1,2 @@
+string dtype
+InformSlot[] slots

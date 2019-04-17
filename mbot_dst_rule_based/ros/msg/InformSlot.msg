@@ -1,0 +1,2 @@
+string slot
+string value
