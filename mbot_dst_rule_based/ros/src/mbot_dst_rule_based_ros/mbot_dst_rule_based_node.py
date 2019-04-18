@@ -4,50 +4,97 @@ import rospy
 import rospkg
 
 import json
+import os
 
-#from std_msgs.msg import int32
+#from std_msgs.msg import int32 # TURN NUMBER !!
 from mbot_nlu_bert.msg import InformSlot, DialogAct, DialogActArray
 from mbot_dst_rule_based.mbot_dst_rule_based_common import DialogueStateTracking
 
 
 # parameters 
-LOOP_RATE = 10.0
-PUB_TOPIC_NAME = '/belief'
-SUB_TOPIC_NAME = '/dialogue_acts'
-NODE_NAME = 'dialogue_state_tracking'
-SLOTS = ['intent', 'person', 'object', 'source', 'destination']
-ONTHOLOGY_PATH = '/ros/src/mbot_dst_rule_based_ros/onthology.json'
-
+# '~loop_rate'
+# '~node_name'
+# '~slots'
+# '~dialogue_acts_topic_name'
+# '~belief_topic_name'
+# '~onthology_full_name'
 
 # NEED TO ADD A SUB TOPIC TO INDICATE THE TURN NUMBER !!!
 
+
+
+"""
+Description: This function helps logging parameters as debug verbosity messages.
+
+Inputs:
+	- param_dict: a dictionary whose keys are the parameter's names and values the parameter's values.
+"""
+def logdebug_param(param_dict):
+	[ rospy.logdebug( '{:<20}\t{}'.format(param[0], param[1]) ) for param in param_dict.items() ]
+
+
+
 class DSTNode(object):
 
-	def __init__(self, name):
+	def __init__(self, debug=False):
+
+		# get useful parameters, and if any of them doesn't exist, use the default value
+		rate 			= rospy.get_param('~loop_rate', 10.0)
+		slots 			= rospy.get_param('~slots', ['intent', 'person', 'object', 'source', 'destination'])
+		node_name 		= rospy.get_param('~node_name', 'dialogue_state_tracking')
+		belief_topic 	= rospy.get_param('~belief_topic_name', '/belief')
+		d_acts_topic 	= rospy.get_param('~dialogue_acts_topic_name', '/dialogue_acts')
+		onthology_name 	= rospy.get_param('~onthology_full_name', 'ros/src/mbot_dst_rule_based_ros/onthology.json')
+
+		# initializes the node (if debug, initializes in debug mode)
+		if debug == True:
+			rospy.init_node(node_name, anonymous=False, log_level=rospy.DEBUG)
+			rospy.loginfo("%s node created [DEBUG MODE]" % node_name)
+		else:
+			rospy.init_node(node_name, anonymous=False)
+			rospy.loginfo("%s node created" % node_name)
+
+		# set parameters to make sure all parameters are set to the parameter server
+		rospy.set_param('~loop_rate', rate)
+		rospy.set_param('~slots', slots)
+		rospy.set_param('~node_name', node_name)
+		rospy.set_param('~belief_topic_name', belief_topic)
+		rospy.set_param('~dialogue_acts_topic_name', d_acts_topic)
+		rospy.set_param('~onthology_full_name', onthology_name)
+
+		rospy.logdebug('=== NODE PRIVATE PARAMETERS ============')
+		logdebug_param(rospy.get_param(node_name))
 
 		rospack = rospkg.RosPack()
-
-		rospy.init_node(name, anonymous=False)
-
-		slots = SLOTS
-		onthology_path = rospack.get_path("mbot_dst_rule_based") + ONTHOLOGY_PATH
+		# get useful paths
+		generic_path 	= rospack.get_path("mbot_dst_rule_based")
+		onthology_path 	= os.path.join(generic_path, onthology_name)
+		logdebug_param({'generic_path': generic_path, 'onthology_full_path': onthology_path})
 
 		with open(onthology_path, 'r') as fp:
 			onthology_dict = json.load(fp)
 		belief = {slot: {value: 0.0 for value in onthology_dict[slot] } for slot in slots }
+		rospy.logdebug('=== DIALOGUE INITIAL BELIEF ============')
+		rospy.logdebug(belief)
 
 		self.dst_object = DialogueStateTracking(slots=slots, initial_belief=belief)
+		rospy.loginfo('dialogue state tracking object created')
 
 		self.dst_request_received = False
+		self.loop_rate = rospy.Rate(rate)
 
-		self.loop_rate = rospy.Rate(LOOP_RATE)
+		rospy.Subscriber(d_acts_topic, DialogActArray, self.dstCallback, queue_size=1)
+		rospy.loginfo("subscribed to topic %s", d_acts_topic)
 
-		rospy.Subscriber(SUB_TOPIC_NAME, DialogActArray, self.dstCallback, queue_size=1)
-		#self.pub_belief = rospy.Publisher(PUB_TOPIC_NAME, DialogActArray, queue_size=1)
-		rospy.loginfo("%s initialized, ready to accept requests" % NODE_NAME)
+		#self.pub_belief = rospy.Publisher(belief_topic, DialogActArray, queue_size=1)
+		
+		rospy.loginfo("%s initialization completed! Ready to accept requests" % node_name)
 
 
 	def dstCallback(self, dialogue_act_array_msg):
+
+		rospy.loginfo('[Message received]')
+		rospy.logdebug('{}'.format(dialogue_act_array_msg))
 
 		self.dst_request_received = True
 		self.dialogue_acts = dialogue_act_array_msg.dialogue_acts
@@ -59,6 +106,7 @@ class DSTNode(object):
 
 			if self.dst_request_received == True:
 
+				rospy.loginfo('[Handling message]')
 				self.dst_request_received = False
 
 				dialogue_acts = [{
@@ -66,9 +114,7 @@ class DSTNode(object):
 					"slots": { slot.slot: slot.value  for slot in dialogue_act.slots },
 					"probability": 0.8
 				} for dialogue_act in self.dialogue_acts ]
-
-				rospy.loginfo("\n\n")
-				rospy.loginfo("[Received] %s" % dialogue_acts)
+				rospy.logdebug('dialogue_acts_dict: {}'.format(dialogue_acts))
 
 				last_system_response = {
 					"d-type": "hello",
@@ -82,13 +128,14 @@ class DSTNode(object):
 					"requestable": []
 				}
 
+				rospy.loginfo('[Updating belief]')
 				self.dst_object.update_belief(dialogue_acts, last_system_response)
-				rospy.loginfo("[Belief] %s" % self.dst_object.belief)
+				rospy.logdebug('belief: {}'.format(self.dst_object.belief))
 
 			self.loop_rate.sleep()
 
 
 def main():
 
-	dst_node = DSTNode(name=NODE_NAME)
+	dst_node = DSTNode(debug=True)
 	dst_node.begin()

@@ -129,7 +129,6 @@ class DialogueStateTracking(object):
 		- last_system_response: system response of the previous turn.
 	"""
 	def update_belief(self, dialogue_acts, last_system_response):
-		print(dialogue_acts)
 		self.__apply_rules(self.split_merge(dialogue_acts), last_system_response)
 
 
