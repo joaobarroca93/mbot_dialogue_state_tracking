@@ -6,7 +6,7 @@ import os
 
 import numpy as np
 
-
+import rospy
 import traceback
 
 DEBUG = False
@@ -30,6 +30,8 @@ class DialogueStateTracking(object):
 	"""
 	def __init__(self, slots, initial_belief):
 
+		rospy.logdebug("Initializing DialogueStateTracking object")
+
 		self.__slots = slots
 		self.__initial_belief = initial_belief
 
@@ -47,6 +49,8 @@ class DialogueStateTracking(object):
 	Description: Initializes the belief of the dialogue with the initial belief.
 	"""
 	def initialize_belief(self):
+
+		rospy.logdebug("Initializing belief")
 
 		self.__belief = copy.deepcopy(self.__initial_belief)
 		self.__belief_seen_slots = {key: {} for key in self.__belief.keys()}
@@ -66,9 +70,17 @@ class DialogueStateTracking(object):
 		- a list of single slot dialogue acts.
 	"""
 	def split(self, dialogue_acts):
+
+		rospy.logdebug("Spliting dialogue acts")
+		rospy.logdebug(dialogue_acts)
+
 		single_slot_d_acts = []
 		for dialogue_act in dialogue_acts:
 			single_slot_d_acts.extend(self.__split_dialogue_act(dialogue_act))
+
+		rospy.logdebug("Single slot dialogue acts")
+		rospy.logdebug(single_slot_d_acts)
+
 		return single_slot_d_acts
 
 
