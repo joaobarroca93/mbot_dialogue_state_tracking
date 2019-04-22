@@ -44,6 +44,7 @@ class DSTNode(object):
 		node_name 		= rospy.get_param('~node_name', 'dialogue_state_tracking')
 		belief_topic 	= rospy.get_param('~belief_topic_name', '/belief')
 		d_acts_topic 	= rospy.get_param('~dialogue_acts_topic_name', '/dialogue_acts')
+		system_response = rospy.get_param('~system_response_topic_name', '/system_response')
 		onthology_name 	= rospy.get_param('~onthology_full_name', 'ros/src/mbot_dst_rule_based_ros/onthology.json')
 
 		# initializes the node (if debug, initializes in debug mode)
@@ -60,6 +61,7 @@ class DSTNode(object):
 		rospy.set_param('~node_name', node_name)
 		rospy.set_param('~belief_topic_name', belief_topic)
 		rospy.set_param('~dialogue_acts_topic_name', d_acts_topic)
+		rospy.set_param('~system_response_topic_name', system_response)
 		rospy.set_param('~onthology_full_name', onthology_name)
 
 		rospy.logdebug('=== NODE PRIVATE PARAMETERS ============')
@@ -82,9 +84,23 @@ class DSTNode(object):
 
 		self.dst_request_received = False
 		self.loop_rate = rospy.Rate(rate)
+		self.last_system_response = {
+					"d-type": "hello",
+					"slots": {
+						"intent": "none",
+						"object": "none",
+						"person": "none",
+						"source": "none",
+						"destination": "none"
+					},
+					"requestable": []
+				}
 
 		rospy.Subscriber(d_acts_topic, DialogActArray, self.dstCallback, queue_size=1)
 		rospy.loginfo("subscribed to topic %s", d_acts_topic)
+
+		rospy.Subscriber(system_response, DialogAct, self.systemResponseCallback, queue_size=1)
+		rospy.loginfo("subscribed to topic %s", system_response)
 
 		#self.pub_belief = rospy.Publisher(belief_topic, DialogActArray, queue_size=1)
 		
@@ -98,6 +114,18 @@ class DSTNode(object):
 
 		self.dst_request_received = True
 		self.dialogue_acts = dialogue_act_array_msg.dialogue_acts
+
+
+	def systemResponseCallback(self, dialogue_act_msg):
+
+		rospy.loginfo('[System response updated]')
+		rospy.logdebug('{}'.format(dialogue_act_msg))
+
+		self.last_system_response = {
+					"d-type": dialogue_act_msg.dtype,
+					"slots": { slot.slot: slot.value  for slot in dialogue_act_msg.slots },
+					"requestable": []
+				}
 
 
 	def begin(self):
@@ -116,20 +144,8 @@ class DSTNode(object):
 				} for dialogue_act in self.dialogue_acts ]
 				rospy.logdebug('dialogue_acts_dict: {}'.format(dialogue_acts))
 
-				last_system_response = {
-					"d-type": "hello",
-					"slots": {
-						"intent": "none",
-						"object": "none",
-						"person": "none",
-						"source": "none",
-						"destination": "none"
-					},
-					"requestable": []
-				}
-
 				rospy.loginfo('[Updating belief]')
-				self.dst_object.update_belief(dialogue_acts, last_system_response)
+				self.dst_object.update_belief(dialogue_acts, self.last_system_response)
 				rospy.logdebug('belief: {}'.format(self.dst_object.belief))
 
 			self.loop_rate.sleep()
