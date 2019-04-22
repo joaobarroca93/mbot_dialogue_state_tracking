@@ -9,8 +9,6 @@ import numpy as np
 import rospy
 import traceback
 
-DEBUG = False
-
 class DialogueStateTracking(object):
 
 	"""
@@ -102,6 +100,10 @@ class DialogueStateTracking(object):
 		- the merged dialogue acts.
 	"""
 	def merge(self, dialogue_acts, normalize=True):
+
+		rospy.logdebug("Merging single slot dialogue acts")
+		rospy.logdebug(dialogue_acts)
+
 		merged_d_acts = []
 		for d_act in dialogue_acts:
 			if self.__slot_value_in_dialogue_acts(d_act['slots'], merged_d_acts):
@@ -109,7 +111,12 @@ class DialogueStateTracking(object):
 			else:
 				merged_d_acts.append(d_act.copy())
 		if normalize:
+			rospy.logdebug("Normalizing probabilities")
 			merged_d_acts = self.__normalize_probs(merged_d_acts)
+
+		rospy.logdebug("Merged dialogue acts")
+		rospy.logdebug(merged_d_acts)
+
 		return merged_d_acts
 
 
@@ -406,7 +413,9 @@ class DialogueStateTracking(object):
 	"""
 	def __apply_inform_rule(self, dialogue_act):
 		if DialogueStateTracking.__dialogue_act_type_is(dialogue_act, d_type='inform'):
-			if DEBUG is True: print("Applying inform rule")
+
+			rospy.logdebug("Applying inform rule to {}".format(dialogue_act))
+
 			slot = list(dialogue_act['slots'].keys())[0]
 			value = dialogue_act['slots'][slot]
 			prob = dialogue_act['probability']
@@ -431,7 +440,9 @@ class DialogueStateTracking(object):
 	"""
 	def __apply_deny_rule(self, dialogue_act):
 		if DialogueStateTracking.__dialogue_act_type_is(dialogue_act, d_type='deny'):
-			if DEBUG is True: print("Applying deny rule")
+			
+			rospy.logdebug("Applying deny rule to {}".format(dialogue_act))
+
 			slot = list(dialogue_act['slots'].keys())[0]
 			value = dialogue_act['slots'][slot]
 			prob = dialogue_act['probability']
@@ -458,7 +469,9 @@ class DialogueStateTracking(object):
 	"""
 	def __apply_affirm_rule(self, dialogue_act, slot_value_pairs):
 		if DialogueStateTracking.__dialogue_act_type_is(dialogue_act, d_type='affirm'):
-			if DEBUG is True: print("Applying affirm rule")
+			
+			rospy.logdebug("Applying affirm rule to {}".format(dialogue_act))
+
 			for slot in list(slot_value_pairs.keys()):
 				if not self.__slot_value_is(slot_value_pairs[slot], value='none'):
 					value = slot_value_pairs[slot]
@@ -487,7 +500,9 @@ class DialogueStateTracking(object):
 	"""
 	def __apply_negate_rule(self, dialogue_act, slot_value_pairs):
 		if DialogueStateTracking.__dialogue_act_type_is(dialogue_act, d_type='negate'):
-			if DEBUG is True: print("Applying negate rule")
+			
+			rospy.logdebug("Applying negate rule to {}".format(dialogue_act))
+
 			for slot in list(slot_value_pairs.keys()):
 				if not self.__slot_value_is(slot_value_pairs[slot], value='none'):
 					value = slot_value_pairs[slot]
@@ -522,7 +537,8 @@ class DialogueStateTracking(object):
 				self.__apply_affirm_rule(d_act, last_system_response['slots'])
 				self.__apply_negate_rule(d_act, last_system_response['slots'])
 			except Exception:
-				if DEBUG is True: print(traceback.format_exc())
+				rospy.logwarn("Error applying rules to {}".format(d_act))
+				rospy.logdebug(traceback.format_exc())
 				continue
 
 
