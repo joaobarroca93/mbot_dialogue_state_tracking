@@ -118,8 +118,8 @@ class DSTNode(object):
 
 	def systemResponseCallback(self, dialogue_act_msg):
 
-		rospy.loginfo('[System response updated]')
-		rospy.logdebug('{}'.format(dialogue_act_msg))
+		#rospy.loginfo('[System response updated]')
+		#rospy.logdebug('{}'.format(dialogue_act_msg))
 
 		self.last_system_response = {
 					"d-type": dialogue_act_msg.dtype,
@@ -140,13 +140,13 @@ class DSTNode(object):
 				dialogue_acts = [{
 					"d-type": dialogue_act.dtype,
 					"slots": { slot.slot: slot.value  for slot in dialogue_act.slots },
-					"probability": 0.8
+					"probability": dialogue_act.joint_probability
 				} for dialogue_act in self.dialogue_acts ]
 				rospy.logdebug('dialogue_acts_dict: {}'.format(dialogue_acts))
 
 				rospy.loginfo('[Updating belief]')
-				self.dst_object.update_belief(dialogue_acts, self.last_system_response)
-				rospy.logdebug('belief: {}'.format(self.dst_object.belief))
+				self.dst_object.update_belief(dialogue_acts, self.last_system_response, normalize=False)
+				rospy.loginfo('belief: {}'.format(self.dst_object.belief))
 
 			self.loop_rate.sleep()
 

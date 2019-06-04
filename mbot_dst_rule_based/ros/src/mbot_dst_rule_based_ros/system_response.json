@@ -1,0 +1,11 @@
+{
+	"d-type": "confirm",
+	"slots": {
+		"intent": "follow",
+		"object": "none",
+		"person": "me",
+		"source": "none",
+		"destination": "kitchen"
+	},
+	"requestable": ["none"]
+}

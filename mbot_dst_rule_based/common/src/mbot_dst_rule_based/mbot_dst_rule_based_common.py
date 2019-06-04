@@ -99,7 +99,7 @@ class DialogueStateTracking(object):
 	Outputs:
 		- the merged dialogue acts.
 	"""
-	def merge(self, dialogue_acts, normalize=True):
+	def merge(self, dialogue_acts, normalize=False):
 
 		rospy.logdebug("Merging single slot dialogue acts")
 		rospy.logdebug(dialogue_acts)
@@ -133,8 +133,9 @@ class DialogueStateTracking(object):
 	Outputs:
 		- the split-merged dialogue acts.
 	"""
-	def split_merge(self, dialogue_acts):
-		return self.merge(self.split(dialogue_acts))
+	def split_merge(self, dialogue_acts, normalize=False):
+		return self.merge(self.split(dialogue_acts), normalize=normalize)
+
 
 
 
@@ -147,8 +148,8 @@ class DialogueStateTracking(object):
 		- dialogue_acts: the dialogue acts of the current turn.
 		- last_system_response: system response of the previous turn.
 	"""
-	def update_belief(self, dialogue_acts, last_system_response):
-		self.__apply_rules(self.split_merge(dialogue_acts), last_system_response)
+	def update_belief(self, dialogue_acts, last_system_response, normalize=False):
+		self.__apply_rules(self.split_merge(dialogue_acts, normalize=normalize), last_system_response)
 
 
 	
