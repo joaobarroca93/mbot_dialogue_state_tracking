@@ -7,6 +7,7 @@ import os
 import numpy as np
 
 import rospy
+import rospkg
 import traceback
 
 class DialogueStateTracking(object):
@@ -247,15 +248,15 @@ class DialogueStateTracking(object):
 		# get the slots on the dialogue_act whose values are not <none>.
 		slots = (slot for slot in dialogue_act['slots'] if not \
 			DialogueStateTracking.__slot_value_is(
-				dialogue_act['slots'][slot], value='none'
+				dialogue_act['slots'][slot]['value'], value='none'
 			)
 		)
 		# for each slot whose value is not <none>, creates a single dialogue act.
 		return [ DialogueStateTracking.__produce_dialogue_act(
-					d_type=dialogue_act['d-type'], slots={slot: dialogue_act['slots'][slot]}, probability=dialogue_act['probability']
+					d_type=dialogue_act['d-type'],
+					slots={slot: dialogue_act['slots'][slot]['value']},
+					probability=dialogue_act['slots'][slot]['probability']
 				) for slot in slots ]
-
-
 
 
 	"""
@@ -585,7 +586,11 @@ class DialogueStateTracking(object):
 
 if __name__ == '__main__':
 
-	with open('onthology.json', 'r') as fp:
+	rospack = rospkg.RosPack()
+	generic_path 	= rospack.get_path("mbot_dst_rule_based")
+	onthology_path 	= os.path.join(generic_path, 'ros/src/mbot_dst_rule_based_ros/onthology.json')
+
+	with open(onthology_path, 'r') as fp:
 		onthology_dict = json.load(fp)
 
 	slots = ['intent', 'person', 'object', 'source', 'destination']
@@ -594,3 +599,48 @@ if __name__ == '__main__':
 	belief = {slot: {value: 0.0 for value in onthology_dict[slot] } for slot in slots }
 
 	dst_object = DialogueStateTracking(slots=slots, initial_belief=belief)
+
+
+	dialogue_acts = [
+		{
+			'd-type': 'inform',
+			'slots': {
+				'intent': 		{'value': 'take', 			'probability': 0.008},
+				'object': 		{'value': 'book', 			'probability': 0.002},
+				'person': 		{'value': 'none', 			'probability': 0.01},
+				'destination': 	{'value': 'none', 			'probability': 0.01},
+				'source':		{'value': 'living room', 	'probability': 0.001}
+			},
+			'probability': 0.008
+		},
+		{
+			'd-type': 'inform',
+			'slots': {
+				'intent': 		{'value': 'take', 			'probability': 0.008},
+				'object': 		{'value': 'book', 			'probability': 0.002},
+				'person': 		{'value': 'none', 			'probability': 0.01},
+				'destination': 	{'value': 'none', 			'probability': 0.01},
+				'source':		{'value': 'living room', 	'probability': 0.008}
+			},
+			'probability': 0.008
+		},
+		{
+			'd-type': 'inform',
+			'slots': {
+				'intent': 		{'value': 'take', 			'probability': 0.008},
+				'object': 		{'value': 'book', 			'probability': 0.002},
+				'person': 		{'value': 'none', 			'probability': 0.01},
+				'destination': 	{'value': 'none', 			'probability': 0.01},
+				'source':		{'value': 'living room', 	'probability': 0.008}
+			},
+			'probability': 0.008
+		},
+	]
+
+	last_system_response = {
+		'd-type': 'hello',
+		'slots': {}
+	}
+
+	dst_object.update_belief(dialogue_acts, last_system_response, normalize=False)
+	print(dst_object.belief)
