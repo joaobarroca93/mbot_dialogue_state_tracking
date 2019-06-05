@@ -8,7 +8,7 @@ import os
 
 #from std_msgs.msg import int32 # TURN NUMBER !!
 from mbot_nlu_bert.msg import InformSlot, DialogAct, DialogActArray
-from mbot_dst_rule_based.mbot_dst_rule_based_common import DialogueStateTracking
+from mbot_dst_rule_based.mbot_dst_rule_based_common_v2 import DialogueStateTracking
 
 
 # parameters 
@@ -139,7 +139,7 @@ class DSTNode(object):
 
 				dialogue_acts = [{
 					"d-type": dialogue_act.dtype,
-					"slots": { slot.slot: slot.value  for slot in dialogue_act.slots },
+					"slots": { slot.slot: {'value': slot.value, 'probability': slot.probability}  for slot in dialogue_act.slots },
 					"probability": dialogue_act.joint_probability
 				} for dialogue_act in self.dialogue_acts ]
 				rospy.logdebug('dialogue_acts_dict: {}'.format(dialogue_acts))
@@ -153,5 +153,5 @@ class DSTNode(object):
 
 def main():
 
-	dst_node = DSTNode(debug=True)
+	dst_node = DSTNode(debug=False)
 	dst_node.begin()
