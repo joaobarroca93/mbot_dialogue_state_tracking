@@ -140,7 +140,7 @@ class DSTNode(object):
 				dialogue_acts = [{
 					"d-type": dialogue_act.dtype,
 					"slots": { slot.slot: {'value': slot.value, 'probability': slot.probability}  for slot in dialogue_act.slots },
-					"probability": dialogue_act.joint_probability
+					"probability": dialogue_act.d_type_probability
 				} for dialogue_act in self.dialogue_acts ]
 				rospy.logdebug('dialogue_acts_dict: {}'.format(dialogue_acts))
 
