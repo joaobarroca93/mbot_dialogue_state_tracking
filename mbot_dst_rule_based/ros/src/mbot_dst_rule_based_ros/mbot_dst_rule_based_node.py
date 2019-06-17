@@ -7,7 +7,7 @@ import json
 import os
 
 #from std_msgs.msg import int32 # TURN NUMBER !!
-from mbot_nlu_bert.msg import InformSlot, DialogAct, DialogActArray
+from mbot_dst_rule_based.msg import InformSlot, DialogAct, DialogActArray, DialogState
 from mbot_dst_rule_based.mbot_dst_rule_based_common_v2 import DialogueStateTracking
 
 
@@ -42,7 +42,7 @@ class DSTNode(object):
 		rate 			= rospy.get_param('~loop_rate', 10.0)
 		slots 			= rospy.get_param('~slots', ['intent', 'person', 'object', 'source', 'destination'])
 		node_name 		= rospy.get_param('~node_name', 'dialogue_state_tracking')
-		belief_topic 	= rospy.get_param('~belief_topic_name', '/belief')
+		d_state_topic 	= rospy.get_param('~d_state_topic_name', '/dialogue_state')
 		d_acts_topic 	= rospy.get_param('~dialogue_acts_topic_name', '/dialogue_acts')
 		system_response = rospy.get_param('~system_response_topic_name', '/system_response')
 		onthology_name 	= rospy.get_param('~onthology_full_name', 'ros/src/mbot_dst_rule_based_ros/onthology.json')
@@ -59,7 +59,7 @@ class DSTNode(object):
 		rospy.set_param('~loop_rate', rate)
 		rospy.set_param('~slots', slots)
 		rospy.set_param('~node_name', node_name)
-		rospy.set_param('~belief_topic_name', belief_topic)
+		rospy.set_param('~d_state_topic_name', d_state_topic)
 		rospy.set_param('~dialogue_acts_topic_name', d_acts_topic)
 		rospy.set_param('~system_response_topic_name', system_response)
 		rospy.set_param('~onthology_full_name', onthology_name)
@@ -102,7 +102,7 @@ class DSTNode(object):
 		rospy.Subscriber(system_response, DialogAct, self.systemResponseCallback, queue_size=1)
 		rospy.loginfo("subscribed to topic %s", system_response)
 
-		#self.pub_belief = rospy.Publisher(belief_topic, DialogActArray, queue_size=1)
+		self.pub_dialogue_state = rospy.Publisher(d_state_topic, DialogState, queue_size=1)
 		
 		rospy.loginfo("%s initialization completed! Ready to accept requests" % node_name)
 
@@ -147,6 +147,28 @@ class DSTNode(object):
 				rospy.loginfo('[Updating belief]')
 				self.dst_object.update_belief(dialogue_acts, self.last_system_response, normalize=False)
 				rospy.loginfo('belief: {}'.format(self.dst_object.belief))
+
+				{
+					'person': {},
+					'destination': {},
+					'intent': {},
+					'object': {
+						'book': 0.20290499751193114
+					},
+					'source': {}
+				}
+
+
+				dialogue_state = DialogState()
+				for slot in self.dst_object.belief.keys():
+					try:
+						for value in self.dst_object.belief[slot].keys():
+							probability = self.dst_object.belief[slot][value]
+							dialogue_state.slots.append(InformSlot(slot=slot, value=value, probability=probability))
+					except KeyError as err:
+						rospy.logerr(err)
+
+				self.pub_dialogue_state.publish(dialogue_state)
 
 			self.loop_rate.sleep()
 

@@ -39,3 +39,5 @@ Thumbs.db
 # pyc generated files #
 ######################
 *.pyc
+
+*/ros/src/mbot_dst_rule_based_ros/system_response.json

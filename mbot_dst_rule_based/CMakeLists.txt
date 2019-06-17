@@ -13,6 +13,7 @@ add_message_files(
 		InformSlot.msg
 	  	DialogAct.msg
 	  	DialogActArray.msg
+		DialogState.msg
 )
 
 catkin_python_setup()
