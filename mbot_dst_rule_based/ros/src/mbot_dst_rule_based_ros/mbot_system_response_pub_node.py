@@ -7,7 +7,7 @@ import json
 import yaml
 import os
 
-from mbot_nlu_bert.msg import InformSlot, DialogAct
+from mbot_dst_rule_based.msg import InformSlot, DialogAct, DialogState
 
 
 """
@@ -30,6 +30,7 @@ class SystemResponseNode(object):
 		slots 			= rospy.get_param('~slots', ['intent', 'person', 'object', 'source', 'destination'])
 		node_name 		= rospy.get_param('~node_name', 'dialogue_management')
 		system_response_topic = rospy.get_param('~system_response_topic_name', '/system_response')
+		d_state_topic 	= rospy.get_param('~d_state_topic_name', '/dialogue_state')
 		system_response_filename 	= rospy.get_param('~system_response_filename', 'ros/src/mbot_dst_rule_based_ros/system_response.json')
 
 		# initializes the node (if debug, initializes in debug mode)
@@ -45,6 +46,7 @@ class SystemResponseNode(object):
 		rospy.set_param('~slots', slots)
 		rospy.set_param('~node_name', node_name)
 		rospy.set_param('~system_response_topic_name', system_response_topic)
+		rospy.set_param('~d_state_topic_name', d_state_topic)
 		rospy.set_param('~system_response_filename', system_response_filename)
 
 		rospy.logdebug('=== NODE PRIVATE PARAMETERS ============')
@@ -60,9 +62,16 @@ class SystemResponseNode(object):
 		self.system_response_path = system_response_path
 		self.slots = slots
 
+		rospy.Subscriber(d_state_topic, DialogState, self.dmCallback, queue_size=1)
+		rospy.loginfo("subscribed to topic %s", d_state_topic)
+
 		self.pub_belief = rospy.Publisher(system_response_topic, DialogAct, queue_size=1)
 		rospy.loginfo("publishing to topic %s", system_response_topic)
 
+	def dmCallback(self, dialog_state_msg):
+
+		rospy.loginfo('[Message received]')
+		rospy.logdebug('{}'.format(dialog_state_msg))
 
 	def begin(self):
 
