@@ -130,6 +130,8 @@ class DSTNode(object):
 
 	def begin(self):
 
+		THRESHOLD = 0.1
+
 		while not rospy.is_shutdown():
 
 			if self.dst_request_received == True:
@@ -164,7 +166,8 @@ class DSTNode(object):
 					try:
 						for value in self.dst_object.belief[slot].keys():
 							probability = self.dst_object.belief[slot][value]
-							dialogue_state.slots.append(InformSlot(slot=slot, value=value, probability=probability))
+							if probability > THRESHOLD:
+								dialogue_state.slots.append(InformSlot(slot=slot, value=value, probability=probability))
 					except KeyError as err:
 						rospy.logerr(err)
 
