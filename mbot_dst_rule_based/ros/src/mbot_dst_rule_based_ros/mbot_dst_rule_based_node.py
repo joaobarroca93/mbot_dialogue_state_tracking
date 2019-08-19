@@ -7,8 +7,12 @@ import json
 import os
 
 #from std_msgs.msg import int32 # TURN NUMBER !!
-from mbot_dst_rule_based.msg import InformSlot, DialogAct, DialogActArray, DialogState
+from mbot_dst_rule_based.msg import DialogState
 from mbot_dst_rule_based.mbot_dst_rule_based_common_v2 import DialogueStateTracking
+
+from mbot_nlu_pytorch.msg import (InformSlot, DialogAct,
+								DialogActArray, ASRHypothesis,
+								ASRNBestList)
 
 
 # parameters 
@@ -141,8 +145,8 @@ class DSTNode(object):
 
 				dialogue_acts = [{
 					"d-type": dialogue_act.dtype,
-					"slots": { slot.slot: {'value': slot.value, 'probability': slot.probability}  for slot in dialogue_act.slots },
-					"probability": dialogue_act.d_type_probability
+					"slots": { slot.slot: {'value': slot.value, 'probability': slot.confidence}  for slot in dialogue_act.slots if slot.known == True},
+					"probability": dialogue_act.d_type_confidence
 				} for dialogue_act in self.dialogue_acts ]
 				rospy.logdebug('dialogue_acts_dict: {}'.format(dialogue_acts))
 
@@ -150,24 +154,14 @@ class DSTNode(object):
 				self.dst_object.update_belief(dialogue_acts, self.last_system_response, normalize=False)
 				rospy.loginfo('belief: {}'.format(self.dst_object.belief))
 
-				{
-					'person': {},
-					'destination': {},
-					'intent': {},
-					'object': {
-						'book': 0.20290499751193114
-					},
-					'source': {}
-				}
-
 
 				dialogue_state = DialogState()
 				for slot in self.dst_object.belief.keys():
 					try:
 						for value in self.dst_object.belief[slot].keys():
-							probability = self.dst_object.belief[slot][value]
-							if probability > THRESHOLD:
-								dialogue_state.slots.append(InformSlot(slot=slot, value=value, probability=probability))
+							confidence = self.dst_object.belief[slot][value]
+							if confidence > THRESHOLD:
+								dialogue_state.slots.append(InformSlot(slot=slot, value=value, confidence=confidence, known=True))
 					except KeyError as err:
 						rospy.logerr(err)
 
