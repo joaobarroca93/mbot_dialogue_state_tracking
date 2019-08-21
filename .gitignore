@@ -40,4 +40,8 @@ Thumbs.db
 ######################
 *.pyc
 
+# pycharm files #
+######################
+.idea*
+
 */ros/src/mbot_dst_rule_based_ros/system_response.json
