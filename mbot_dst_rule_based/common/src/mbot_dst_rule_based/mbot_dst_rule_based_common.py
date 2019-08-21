@@ -9,7 +9,7 @@ import traceback
 
 class Slot(object):
 
-	def __init__(self, type, value=None, confidence=None):
+	def __init__(self, type, value=None, confidence=0.0):
 
 		self.type = type
 		self.value = value
@@ -31,7 +31,7 @@ class Slot(object):
 
 class DialogueAct(object):
 
-	def __init__(self, dtype=None, slots=[], confidence=None):
+	def __init__(self, dtype=None, slots=[], confidence=0.0):
 
 		self.dtype = dtype
 		self.slots = slots
@@ -95,14 +95,14 @@ class DialogueStateTracking(object):
 	def split(self, dialogue_acts):
 
 		rospy.logdebug("Spliting dialogue acts")
-		rospy.logdebug(dialogue_acts)
+		rospy.logdebug([dialogue_act.as_dict() for dialogue_act in dialogue_acts])
 
 		single_slot_d_acts = []
 		for dialogue_act in dialogue_acts:
 			single_slot_d_acts.extend(self.__split_dialogue_act(dialogue_act))
 
 		rospy.logdebug("Single slot dialogue acts")
-		rospy.logdebug(single_slot_d_acts)
+		rospy.logdebug([dialogue_act.as_dict() for dialogue_act in single_slot_d_acts])
 
 		return single_slot_d_acts
 
@@ -110,24 +110,24 @@ class DialogueStateTracking(object):
 	def merge(self, dialogue_acts, normalize=False):
 
 		rospy.logdebug("Merging single slot dialogue acts")
-		rospy.logdebug(dialogue_acts)
+		rospy.logdebug([dialogue_act.as_dict() for dialogue_act in dialogue_acts])
 
 		merged_d_acts = []
 		for d_act in dialogue_acts:
-
 			if self.__slot_value_in_dialogue_acts(d_act, merged_d_acts):
 				merged_d_acts = self.__find_transform_probs_slots(copy.deepcopy(d_act), merged_d_acts)
 			elif self.__affirm_negate_in_dialogue_acts(d_act, merged_d_acts):
 				merged_d_acts = self.__find_transform_probs_dtype(copy.deepcopy(d_act), merged_d_acts)
 			else:
 				merged_d_acts.append(copy.deepcopy(d_act))
+
 		if normalize:
 			#rospy.logdebug("Normalizing probabilities")
 			raise NotImplemented("NORMALIZE NOT IMPLEMENTED!")
 			#merged_d_acts = self.__normalize_probs(merged_d_acts)
 
 		rospy.logdebug("Merged dialogue acts")
-		rospy.logdebug(merged_d_acts)
+		rospy.logdebug([dialogue_act.as_dict() for dialogue_act in merged_d_acts])
 
 		return merged_d_acts
 
@@ -144,16 +144,19 @@ class DialogueStateTracking(object):
 				self.__apply_inform_rule(d_act)
 				self.__apply_affirm_rule(d_act, last_system_response)
 				self.__apply_negate_rule(d_act, last_system_response)
-			except Exception:
+				self.__apply_restart_rule(d_act)
+			except AssertionError:
 				rospy.logwarn("Error applying rules to {}".format(d_act))
 				rospy.logdebug(traceback.format_exc())
 				continue
+			except Exception:
+				break
 
 	def __apply_inform_rule(self, dialogue_act):
 
 		if DialogueStateTracking.__dialogue_act_type_is(dialogue_act, d_type="inform"):
 
-			rospy.logdebug("Applying inform rule to {}".format(dialogue_act))
+			rospy.logdebug("Applying inform rule to {}".format(dialogue_act.as_dict()))
 			assert (len(dialogue_act.slots) == 1)
 
 			slot = dialogue_act.slots[0]
@@ -174,7 +177,7 @@ class DialogueStateTracking(object):
 
 		if DialogueStateTracking.__dialogue_act_type_is(dialogue_act, d_type='affirm'):
 
-			rospy.logdebug("Applying affirm rule to {}".format(dialogue_act))
+			rospy.logdebug("Applying affirm rule to {}".format(dialogue_act.as_dict()))
 			assert system_response_act
 			assert system_response_act.slots
 
@@ -190,7 +193,7 @@ class DialogueStateTracking(object):
 
 		if DialogueStateTracking.__dialogue_act_type_is(dialogue_act, d_type='negate'):
 
-			rospy.logdebug("Applying negate rule to {}".format(dialogue_act))
+			rospy.logdebug("Applying negate rule to {}".format(dialogue_act.as_dict()))
 			assert system_response_act
 			assert system_response_act.slots
 
@@ -201,6 +204,13 @@ class DialogueStateTracking(object):
 						slot_in_belief.confidence = self.__update_probability(
 							slot_in_belief.confidence, confidence, occurence=False
 						)
+
+	def __apply_restart_rule(self, dialogue_act):
+
+		if DialogueStateTracking.__dialogue_act_type_is(dialogue_act, d_type='restart'):
+			rospy.logdebug("Applying restart rule to {}".format(dialogue_act.as_dict()))
+			self.__belief = self.initialize_belief()
+			raise Exception("Restarting Belief")
 
 	# CHECKED
 	@staticmethod
@@ -249,15 +259,16 @@ class DialogueStateTracking(object):
 		if dialogue_acts:
 			for slot in d_act.slots:
 				for dialogue_act in dialogue_acts:
-					assert (len(dialogue_act.slots) == 1)
-					slot_i = dialogue_act.slots[0]
-					if slot == slot_i:
-						return True
+					assert (len(dialogue_act.slots) <= 1)
+					if dialogue_act.slots:
+						slot_i = dialogue_act.slots[0]
+						if slot == slot_i:
+							return True
 		return False
 
 	@staticmethod
 	def __affirm_negate_in_dialogue_acts(d_act, dialogue_acts):
-		if dialogue_acts and d_act.dtype == "affirm" or d_act.dtype == "negate":
+		if dialogue_acts and d_act.dtype != "inform":
 			for dialogue_act in dialogue_acts:
 				if d_act.dtype == dialogue_act.dtype:
 					return True
@@ -273,11 +284,12 @@ class DialogueStateTracking(object):
 	# CHECKED
 	@staticmethod
 	def __find_transform_probs_slots(new_dialogue_act, dialogue_acts):
-		assert (len(new_dialogue_act.slots) == 1)
+		assert (len(new_dialogue_act.slots) <= 1)
 		for d_act in dialogue_acts:
-			assert (len(d_act.slots) == 1)
-			if new_dialogue_act.slots[0] == d_act.slots[0]:
-				d_act.slots[0].confidence = d_act.slots[0].confidence + new_dialogue_act.slots[0].confidence
+			assert (len(d_act.slots) <= 1)
+			if new_dialogue_act.slots and d_act.slots:
+				if new_dialogue_act.slots[0] == d_act.slots[0]:
+					d_act.slots[0].confidence = d_act.slots[0].confidence + new_dialogue_act.slots[0].confidence
 		return dialogue_acts
 
 	@staticmethod

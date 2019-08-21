@@ -8,7 +8,10 @@ import os
 
 #from std_msgs.msg import int32 # TURN NUMBER !!
 from mbot_dst_rule_based.msg import DialogState
-from mbot_dst_rule_based.mbot_dst_rule_based_common_v2 import DialogueStateTracking
+#from mbot_dst_rule_based.mbot_dst_rule_based_common_v2 import DialogueStateTracking
+from mbot_dst_rule_based.mbot_dst_rule_based_common import DialogueAct as MbotDialogueAct
+from mbot_dst_rule_based.mbot_dst_rule_based_common import Slot as MbotSlot
+from mbot_dst_rule_based.mbot_dst_rule_based_common import DialogueStateTracking
 
 from mbot_nlu_pytorch.msg import (InformSlot, DialogAct,
 								DialogActArray, ASRHypothesis,
@@ -77,13 +80,16 @@ class DSTNode(object):
 		onthology_path 	= os.path.join(generic_path, onthology_name)
 		logdebug_param({'generic_path': generic_path, 'onthology_full_path': onthology_path})
 
+		"""
 		with open(onthology_path, 'r') as fp:
 			onthology_dict = json.load(fp)
 		belief = {slot: {value: 0.0 for value in onthology_dict[slot] } for slot in slots }
 		rospy.logdebug('=== DIALOGUE INITIAL BELIEF ============')
 		rospy.logdebug(belief)
+		"""
 
-		self.dst_object = DialogueStateTracking(slots=slots, initial_belief=belief)
+		#self.dst_object = DialogueStateTracking(slots=slots, initial_belief=belief)
+		self.dst_object = DialogueStateTracking()
 		rospy.loginfo('dialogue state tracking object created')
 
 		self.dst_request_received = False
@@ -143,34 +149,51 @@ class DSTNode(object):
 				rospy.loginfo('[Handling message]')
 				self.dst_request_received = False
 
+				dialogue_acts = [
+					MbotDialogueAct(
+						dtype=dialogue_act.dtype,
+						slots=[MbotSlot(
+							type=slot.slot,
+							value=slot.value,
+							confidence=slot.confidence
+						) for slot in dialogue_act.slots if slot.known == True]
+					)
+				for dialogue_act in self.dialogue_acts ]
+
+				"""
 				dialogue_acts = [{
 					"d-type": dialogue_act.dtype,
 					"slots": { slot.slot: {'value': slot.value, 'probability': slot.confidence}  for slot in dialogue_act.slots if slot.known == True},
 					"probability": dialogue_act.d_type_confidence
 				} for dialogue_act in self.dialogue_acts ]
-				rospy.logdebug('dialogue_acts_dict: {}'.format(dialogue_acts))
+				"""
+
+				rospy.logdebug('dialogue_acts_dict: {}'.format(
+					[dialogue_act.as_dict() for dialogue_act in dialogue_acts]
+				))
+
 
 				rospy.loginfo('[Updating belief]')
 				self.dst_object.update_belief(dialogue_acts, self.last_system_response, normalize=False)
-				rospy.loginfo('belief: {}'.format(self.dst_object.belief))
-
+				rospy.loginfo('belief: {}'.format(self.dst_object.belief.as_dict()))
 
 				dialogue_state = DialogState()
-				for slot in self.dst_object.belief.keys():
-					try:
-						for value in self.dst_object.belief[slot].keys():
-							confidence = self.dst_object.belief[slot][value]
-							if confidence > THRESHOLD:
-								dialogue_state.slots.append(InformSlot(slot=slot, value=value, confidence=confidence, known=True))
-					except KeyError as err:
-						rospy.logerr(err)
+				dialogue_state.slots.extend([
+					InformSlot(
+						slot=slot.type,
+						value=slot.value,
+						confidence=slot.confidence,
+						known=True
+					)for slot in self.dst_object.belief.slots]
+				)
 
 				self.pub_dialogue_state.publish(dialogue_state)
+				
 
 			self.loop_rate.sleep()
 
 
 def main():
 
-	dst_node = DSTNode(debug=False)
+	dst_node = DSTNode(debug=True)
 	dst_node.begin()
