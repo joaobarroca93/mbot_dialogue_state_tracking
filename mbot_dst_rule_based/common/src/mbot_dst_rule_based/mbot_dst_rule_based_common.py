@@ -89,7 +89,9 @@ class DialogueStateTracking(object):
 	def __init__(self):
 
 		rospy.logdebug("Initializing DialogueStateTracking object")
-		self.__belief = DialogueStateTracking.initialize_belief()
+		self.__initial_belief = Belief()
+		self.__belief = None
+		self.initialize_belief()
 
 	# CHECKED
 	def split(self, dialogue_acts):
@@ -150,6 +152,7 @@ class DialogueStateTracking(object):
 				rospy.logdebug(traceback.format_exc())
 				continue
 			except Exception:
+				rospy.logdebug("Dialogue State Restarted!")
 				break
 
 	def __apply_inform_rule(self, dialogue_act):
@@ -208,15 +211,15 @@ class DialogueStateTracking(object):
 	def __apply_restart_rule(self, dialogue_act):
 
 		if DialogueStateTracking.__dialogue_act_type_is(dialogue_act, d_type='restart'):
-			rospy.logdebug("Applying restart rule to {}".format(dialogue_act.as_dict()))
-			self.__belief = self.initialize_belief()
-			raise Exception("Restarting Belief")
+			if dialogue_act.confidence >= 0.5:
+				rospy.logdebug("Applying restart rule to {}".format(dialogue_act.as_dict()))
+				self.initialize_belief()
+				raise Exception("Restarting Belief")
 
 	# CHECKED
-	@staticmethod
-	def initialize_belief():
+	def initialize_belief(self):
 		rospy.logdebug("Initializing belief")
-		return Belief()
+		self.__belief = copy.deepcopy(self.__initial_belief)
 
 	# CHECKED
 	@staticmethod
@@ -240,7 +243,7 @@ class DialogueStateTracking(object):
 			dtype=dialogue_act.dtype,
 			slots=[slot],
 			confidence=dialogue_act.confidence
-		) for slot in dialogue_act.slots]
+		) for slot in dialogue_act.slots if slot.value != "none"]
 
 	# CHECKED
 	@staticmethod

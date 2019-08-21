@@ -131,11 +131,12 @@ class DSTNode(object):
 		#rospy.loginfo('[System response updated]')
 		#rospy.logdebug('{}'.format(dialogue_act_msg))
 
-		self.last_system_response = {
-					"d-type": dialogue_act_msg.dtype,
-					"slots": { slot.slot: slot.value  for slot in dialogue_act_msg.slots },
-					"requestable": []
-				}
+		self.last_system_response = MbotDialogueAct(
+			dtype=dialogue_act_msg.dtype,
+			slots=[
+				MbotSlot(type=slot.slot, value=slot.value)
+			for slot in dialogue_act_msg.slots]
+		)
 
 
 	def begin(self):
@@ -152,6 +153,7 @@ class DSTNode(object):
 				dialogue_acts = [
 					MbotDialogueAct(
 						dtype=dialogue_act.dtype,
+						confidence=dialogue_act.d_type_confidence,
 						slots=[MbotSlot(
 							type=slot.slot,
 							value=slot.value,
