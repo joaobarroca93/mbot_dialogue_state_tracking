@@ -179,6 +179,8 @@ class DSTNode(object):
 				self.dst_object.update_belief(dialogue_acts, self.last_system_response, normalize=False)
 				rospy.loginfo('belief: {}'.format(self.dst_object.belief.as_dict()))
 
+				allow_slots = ["object"]
+
 				dialogue_state = DialogState()
 				dialogue_state.slots.extend([
 					InformSlot(
@@ -186,7 +188,7 @@ class DSTNode(object):
 						value=slot.value,
 						confidence=slot.confidence,
 						known=True
-					)for slot in self.dst_object.belief.slots]
+					) for slot in self.dst_object.belief.slots if slot.type in allow_slots]
 				)
 
 				self.pub_dialogue_state.publish(dialogue_state)
