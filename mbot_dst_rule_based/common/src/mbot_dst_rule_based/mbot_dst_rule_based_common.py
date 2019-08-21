@@ -2,12 +2,72 @@
 
 import json
 import copy
-import os
-
-import numpy as np
 
 import rospy
 import traceback
+
+
+class Slot(object):
+
+	def __init__(self, type, value=None, confidence=None):
+
+		self.type = type
+		self.value = value
+		self.confidence = confidence
+
+	def __eq__(self, other):
+		if not isinstance(other, Slot):
+			return NotImplemented
+
+		return self.value == other.value and self.type == other.type
+
+	def as_dict(self):
+		return {
+			"type": self.type,
+			"value": self.value,
+			"confidence": self.confidence
+		}
+
+
+class DialogueAct(object):
+
+	def __init__(self, dtype=None, slots=[], confidence=None):
+
+		self.dtype = dtype
+		self.slots = slots
+		self.confidence = confidence
+
+	def as_dict(self):
+		return {
+			"dtype": self.dtype,
+			"confidence": self.confidence,
+			"slots": [
+				{
+					"type": slot.type,
+					"value": slot.value,
+					"confidence": slot.confidence
+				}
+				for slot in self.slots]
+		}
+
+
+class Belief(object):
+
+	def __init__(self, slots=[]):
+
+		self.slots = slots
+
+	def as_dict(self):
+		return {
+			"belief": [
+				{
+					"type": slot.type,
+					"value": slot.value,
+					"confidence": slot.confidence
+				}
+				for slot in self.slots]
+		}
+
 
 class DialogueStateTracking(object):
 
@@ -26,47 +86,12 @@ class DialogueStateTracking(object):
 		- belief: the current belief of the dialogue.
 		- belief_not_null: the current belief of the dialogue without slots-value pairs that have zero probability.
 	"""
-	def __init__(self, slots, initial_belief):
+	def __init__(self):
 
 		rospy.logdebug("Initializing DialogueStateTracking object")
+		self.__belief = DialogueStateTracking.initialize_belief()
 
-		self.__slots = slots
-		self.__initial_belief = initial_belief
-
-		self.__belief = None
-		self.__belief_seen_slots = None
-
-		self.initialize_belief()
-
-
-
-
-	"""
-	Class method.
-
-	Description: Initializes the belief of the dialogue with the initial belief.
-	"""
-	def initialize_belief(self):
-
-		rospy.logdebug("Initializing belief")
-
-		self.__belief = copy.deepcopy(self.__initial_belief)
-		self.__belief_seen_slots = {key: {} for key in self.__belief.keys()}
-
-
-
-
-	"""
-	Class method.
-
-	Description: Splits the dialogue acts.
-
-	Inputs:
-		- dialogue_acts: the slot dialogue acts we want to split.
-
-	Outputs:
-		- a list of single slot dialogue acts.
-	"""
+	# CHECKED
 	def split(self, dialogue_acts):
 
 		rospy.logdebug("Spliting dialogue acts")
@@ -81,24 +106,7 @@ class DialogueStateTracking(object):
 
 		return single_slot_d_acts
 
-
-
-
-	"""
-
-	[NEED TO ENSURE THE DIALOGUE ACTS ARE SINGLE SLOT !!]
-
-	Class method.
-
-	Description: Merge the single slot dialogue acts.
-
-	Inputs:
-		- dialogue_acts: single slot dialogue acts.
-		- normalize: flag that enables normalization of the dialogue acts probabilities.
-
-	Outputs:
-		- the merged dialogue acts.
-	"""
+	# CHECKED
 	def merge(self, dialogue_acts, normalize=False):
 
 		rospy.logdebug("Merging single slot dialogue acts")
@@ -106,491 +114,265 @@ class DialogueStateTracking(object):
 
 		merged_d_acts = []
 		for d_act in dialogue_acts:
-			if self.__slot_value_in_dialogue_acts(d_act['slots'], merged_d_acts):
-				merged_d_acts = self.__find_transform_probs(merged_d_acts, d_act.copy())
+
+			if self.__slot_value_in_dialogue_acts(d_act, merged_d_acts):
+				merged_d_acts = self.__find_transform_probs_slots(copy.deepcopy(d_act), merged_d_acts)
+			elif self.__affirm_negate_in_dialogue_acts(d_act, merged_d_acts):
+				merged_d_acts = self.__find_transform_probs_dtype(copy.deepcopy(d_act), merged_d_acts)
 			else:
-				merged_d_acts.append(d_act.copy())
+				merged_d_acts.append(copy.deepcopy(d_act))
 		if normalize:
-			rospy.logdebug("Normalizing probabilities")
-			merged_d_acts = self.__normalize_probs(merged_d_acts)
+			#rospy.logdebug("Normalizing probabilities")
+			raise NotImplemented("NORMALIZE NOT IMPLEMENTED!")
+			#merged_d_acts = self.__normalize_probs(merged_d_acts)
 
 		rospy.logdebug("Merged dialogue acts")
 		rospy.logdebug(merged_d_acts)
 
 		return merged_d_acts
 
-
-
-
-	"""
-	Class method.
-
-	Description: Splits and merges the dialogue acts.
-
-	Inputs:
-		- dialogue_acts: the dialogue acts.
-
-	Outputs:
-		- the split-merged dialogue acts.
-	"""
+	# CHECKED
 	def split_merge(self, dialogue_acts, normalize=False):
 		return self.merge(self.split(dialogue_acts), normalize=normalize)
 
-
-
-
-	"""
-	Class method.
-
-	Description: Updates the belief of the tracker, using the dialogue acts of the current turn, and the system response of the last turn.
-
-	Inputs:
-		- dialogue_acts: the dialogue acts of the current turn.
-		- last_system_response: system response of the previous turn.
-	"""
 	def update_belief(self, dialogue_acts, last_system_response, normalize=False):
 		self.__apply_rules(self.split_merge(dialogue_acts, normalize=normalize), last_system_response)
 
+	def __apply_rules(self, d_acts, last_system_response):
+		for d_act in d_acts:
+			try:
+				self.__apply_inform_rule(d_act)
+				self.__apply_affirm_rule(d_act, last_system_response)
+				self.__apply_negate_rule(d_act, last_system_response)
+			except Exception:
+				rospy.logwarn("Error applying rules to {}".format(d_act))
+				rospy.logdebug(traceback.format_exc())
+				continue
 
-	
+	def __apply_inform_rule(self, dialogue_act):
 
-	"""
-	Class private method.
+		if DialogueStateTracking.__dialogue_act_type_is(dialogue_act, d_type="inform"):
 
-	Description: This function deletes the slot-value pairs on the current belief that have zero probability.
+			rospy.logdebug("Applying inform rule to {}".format(dialogue_act))
+			assert (len(dialogue_act.slots) == 1)
 
+			slot = dialogue_act.slots[0]
+			confidence = slot.confidence
+			found = False
+			for slot_in_belief in self.__belief.slots:
+				if slot == slot_in_belief:
+					slot_in_belief.confidence = self.__update_probability(
+						slot_in_belief.confidence, confidence, occurence=True
+					)
+					found = True
+					break
 
-	"""
-	def __clean_belief_not_null(self):
-		null_slot_value_pairs = ( slot_value_pairsfor for slot_value_pairs in \
-			list(self.__belief_seen_slots.items()) if 0.0 in slot_value_pairs.values() )
+			if not found:
+				self.__belief.slots.append(copy.deepcopy(slot))
 
+	def __apply_affirm_rule(self, dialogue_act, system_response_act):
 
+		if DialogueStateTracking.__dialogue_act_type_is(dialogue_act, d_type='affirm'):
 
-	"""
-	Class private staticmethod.
+			rospy.logdebug("Applying affirm rule to {}".format(dialogue_act))
+			assert system_response_act
+			assert system_response_act.slots
 
-	Description: This function creates a dialogue act.
+			confidence = dialogue_act.confidence
+			for slot in system_response_act.slots:
+				for slot_in_belief in self.__belief.slots:
+					if slot == slot_in_belief:
+						slot_in_belief.confidence = self.__update_probability(
+							slot_in_belief.confidence, confidence, occurence=True
+						)
 
-	Inputs:
-		- d_type: the dialogue act type.
-		- slots: a dictionary with slot-value pairs, e.g. {slot1: value1, slot2: value2}
-		- probability: the dialogue act probability.
+	def __apply_negate_rule(self, dialogue_act, system_response_act):
 
-	Outputs:
-		- a dictionary representing a dialogue act, with the keys <d-type, slots, probability]
-	"""
+		if DialogueStateTracking.__dialogue_act_type_is(dialogue_act, d_type='negate'):
+
+			rospy.logdebug("Applying negate rule to {}".format(dialogue_act))
+			assert system_response_act
+			assert system_response_act.slots
+
+			confidence = dialogue_act.confidence
+			for slot in system_response_act.slots:
+				for slot_in_belief in self.__belief.slots:
+					if slot == slot_in_belief:
+						slot_in_belief.confidence = self.__update_probability(
+							slot_in_belief.confidence, confidence, occurence=False
+						)
+
+	# CHECKED
 	@staticmethod
-	def __produce_dialogue_act(d_type, slots, probability):
-		return {'d-type': d_type,
-				'slots': slots,
-				'probability': probability }
+	def initialize_belief():
+		rospy.logdebug("Initializing belief")
+		return Belief()
 
+	# CHECKED
+	@staticmethod
+	def __produce_dialogue_act(dtype=None, slots=[], confidence=None):
+		return DialogueAct(dtype=dtype, slots=slots, confidence=confidence)
 
-
-
-	"""
-	Class private staticmethod.
-
-	Description: Checks if a dialogue act is of the type <d_type>.
-
-	Inputs:
-		- dialogue_act: the dialogue act we want to compare.
-		- d_type: the <d_type>.
-
-	Outputs:
-		- True if the dialogue act if of the type <d_type>.
-		- False, otherwise.
-	"""
+	# CHECKED
 	@staticmethod
 	def __dialogue_act_type_is(dialogue_act, d_type):
-		return dialogue_act['d-type'] == d_type
+		return dialogue_act.dtype == d_type
 
-
-
-
-
-	"""
-	Class private staticmethod.
-
-	Description: Checks if the value of a slot is <value>.
-
-	Inputs:
-		- slot_value: the slot value we want to compare.
-		- value: the <value>.
-
-	Outputs:
-		- True if the slot has the value <value>.
-		- False, otherwise.
-	"""
+	# CHECKED
 	@staticmethod
-	def __slot_value_is(slot_value, value):
-		return slot_value == value
+	def __slot_value_is(slot, value):
+		return slot.value == value
 
-
-
-
-	"""
-	Class private staticmethod.
-
-	Description: Splits a dialogue act of the type inform, into single slot dialogue acts.
-		e.g. inform(slot1=value1, slot2=value2) -> inform(slot1=value1) and inform(slot2=value2)
-
-	Inputs:
-		- dialogue_act: the slot dialogue act we want to split.
-
-	Outputs:
-		- a list of single slot dialogue acts [only one slot has a value different from <none>].
-	"""
+	# CHECKED
 	@staticmethod
 	def __split_inform_dialogue_act(dialogue_act):
-		# get the slots on the dialogue_act whose values are not <none>.
-		slots = (slot for slot in dialogue_act['slots'] if not \
-			DialogueStateTracking.__slot_value_is(
-				dialogue_act['slots'][slot], value='none'
-			)
-		)
-		# for each slot whose value is not <none>, creates a single dialogue act.
-		return [ DialogueStateTracking.__produce_dialogue_act(
-					d_type=dialogue_act['d-type'], slots={slot: dialogue_act['slots'][slot]}, probability=dialogue_act['probability']
-				) for slot in slots ]
+		return [DialogueStateTracking.__produce_dialogue_act(
+			dtype=dialogue_act.dtype,
+			slots=[slot],
+			confidence=dialogue_act.confidence
+		) for slot in dialogue_act.slots]
 
-
-
-
-	"""
-	Class private staticmethod.
-
-	Description: Splits a dialogue act.
-		If the dialogue act is of the type inform or deny, splits it into single slots dialogue acts.
-		If it is of the type affirm, negate (types that don't have slots values), creates a dialogue act without slots (only the type and probability)
-
-	Inputs:
-		- dialogue_act: the slot dialogue act we want to split.
-
-	Outputs:
-		- a list of single slot dialogue acts.
-	"""
+	# CHECKED
 	@staticmethod
 	def __split_dialogue_act(dialogue_act):
-		if not DialogueStateTracking.__dialogue_act_type_is(dialogue_act, d_type='inform') and not DialogueStateTracking.__dialogue_act_type_is(dialogue_act, d_type='deny'):
-			return [ DialogueStateTracking.__produce_dialogue_act(d_type=dialogue_act['d-type'], slots={}, probability=dialogue_act['probability']) ]
+		if not DialogueStateTracking.__dialogue_act_type_is(dialogue_act, d_type='inform'):
+			return [ DialogueStateTracking.__produce_dialogue_act(
+				dtype=dialogue_act.dtype,
+				slots=[],
+				confidence=dialogue_act.confidence
+			)]
 		return DialogueStateTracking.__split_inform_dialogue_act(dialogue_act)
 
-
-
-	"""
-	Class private staticmethod.
-
-	Description: Checks if a there is a slot with the value <slot_value> in the dialogue acts.
-
-	Inputs:
-		- slot_value: the <slot_value>.
-		- dialogue_acts: the dialogue acts we want to check.
-
-	Outputs:
-		- True if there is a slot with value <slot_value>.
-		- False, otherwise.
-	"""
+	# CHECKED
 	@staticmethod
-	def __slot_value_in_dialogue_acts(slot_value, dialogue_acts):
-		return slot_value in [d_act['slots'] for d_act in dialogue_acts]
+	def __slot_value_in_dialogue_acts(d_act, dialogue_acts):
+		if dialogue_acts:
+			for slot in d_act.slots:
+				for dialogue_act in dialogue_acts:
+					assert (len(dialogue_act.slots) == 1)
+					slot_i = dialogue_act.slots[0]
+					if slot == slot_i:
+						return True
+		return False
 
-
-
-	"""
-	Class private staticmethod.
-
-	Description: Updates the probabilities of the previous dialogue acts that correspond to the new dialogue act.
-
-	Inputs:
-		- dialogue_acts: single slot dialogue acts.
-		- new_dialog_act: new single slot dialogue act.
-
-	Outputs:
-		- returns the previous dialogue acts with the updated proabilities.
-	"""
 	@staticmethod
-	def __find_transform_probs(dialogue_acts, new_dialogue_act):
+	def __affirm_negate_in_dialogue_acts(d_act, dialogue_acts):
+		if dialogue_acts and d_act.dtype == "affirm" or d_act.dtype == "negate":
+			for dialogue_act in dialogue_acts:
+				if d_act.dtype == dialogue_act.dtype:
+					return True
+		return False
+
+	@staticmethod
+	def __find_transform_probs_dtype(new_dialogue_act, dialogue_acts):
 		for d_act in dialogue_acts:
-			if new_dialogue_act['slots'] == d_act['slots']:
-				d_act['probability'] = d_act['probability'] + new_dialogue_act['probability']
+			if new_dialogue_act.dtype == d_act.dtype:
+				d_act.confidence = d_act.confidence + new_dialogue_act.confidence
 		return dialogue_acts
 
-
-
-	"""
-	Class private staticmethod.
-
-	Description: Normalize the probabilities using exponencial normalization.
-
-	Inputs:
-		- x: vector of probabilities.
-
-	Outputs:
-		- the normalized probabilities.
-	"""
+	# CHECKED
 	@staticmethod
-	def __exp_normalize(x):
-		if len(x) > 1:
-			b = x.max()
-			y = np.exp(x - b)
-			return y / y.sum()
-		return x
-
-
-
-	"""
-	Class private staticmethod.
-
-	Description: Normalize the probabilities using standard normalization.
-
-	Inputs:
-		- x: vector of probabilities.
-
-	Outputs:
-		- the normalized probabilities.
-	"""
-	@staticmethod
-	def __normalize(x):
-		if len(x) > 1:
-			return x / x.sum()
-		return x
-
-
-
-	"""
-	Class private staticmethod.
-
-	Description: Normalizes the dialogue acts probabilities.
-
-	Inputs:
-		- dialogue_acts: dialogue acts to normalize.
-
-	Outputs:
-		- the normalized dialogue acts.
-	"""
-	@staticmethod
-	def __normalize_probs(dialogue_acts):
-		norm_probs = DialogueStateTracking.__exp_normalize(
-			np.array([ d_act['probability'] for  d_act in dialogue_acts])
-		)
-		for d_act, prob in zip(dialogue_acts, norm_probs):
-			d_act['probability'] = prob
+	def __find_transform_probs_slots(new_dialogue_act, dialogue_acts):
+		assert (len(new_dialogue_act.slots) == 1)
+		for d_act in dialogue_acts:
+			assert (len(d_act.slots) == 1)
+			if new_dialogue_act.slots[0] == d_act.slots[0]:
+				d_act.slots[0].confidence = d_act.slots[0].confidence + new_dialogue_act.slots[0].confidence
 		return dialogue_acts
 
-
-# ------------------------------------------------------------------------------------------------------------------------> HERE
-
-
-	"""
-	Class private staticmethod.
-
-	Description: Updates the probability of an event.
-
-	Inputs:
-		- prev_prob: previous probability of the event.
-		- probability of the new occurence of the event.
-		- occurence: if the event ocurred.
-
-	Outputs:
-		- the updated probability.
-	"""
 	@staticmethod
 	def __update_probability(prev_prob, prob, occurence=True):
 		if occurence is True:
 			return 1 - (1-prev_prob)*(1-prob)
 		return prev_prob*(1-prob)
 
-
-
-	"""
-	Class private method.
-
-	Description: Update the belief of the dialogue with "inform rule" if the dialogue act is of the type inform.
-
-	Inputs:
-		- dialogue_act: the dialogue act we want to use to update the belief.
-	"""
-	def __apply_inform_rule(self, dialogue_act):
-		if DialogueStateTracking.__dialogue_act_type_is(dialogue_act, d_type='inform'):
-
-			rospy.logdebug("Applying inform rule to {}".format(dialogue_act))
-
-			slot = list(dialogue_act['slots'].keys())[0]
-			value = dialogue_act['slots'][slot]
-			prob = dialogue_act['probability']
-			try:
-				self.__belief[slot][value] = self.__update_probability(self.__belief[slot][value], prob, occurence=True)
-				self.__belief_seen_slots[slot][value] = self.__belief[slot][value]
-			except KeyError:
-				raise Exception(
-					"The value [{}] of the slot [{}] on the dialogue act [{}] is not specified in the initial belief".format(value, slot, dialogue_act)
-				)
-
-
-
-
-	"""
-	Class private method.
-
-	Description: Update the belief of the dialogue with "deny rule" if the dialogue act is of the type deny.
-
-	Inputs:
-		- dialogue_act: the dialogue act we want to use to update the belief.
-	"""
-	def __apply_deny_rule(self, dialogue_act):
-		if DialogueStateTracking.__dialogue_act_type_is(dialogue_act, d_type='deny'):
-			
-			rospy.logdebug("Applying deny rule to {}".format(dialogue_act))
-
-			slot = list(dialogue_act['slots'].keys())[0]
-			value = dialogue_act['slots'][slot]
-			prob = dialogue_act['probability']
-			try:
-				self.__belief[slot][value] = self.__update_probability(self.__belief[slot][value], prob, occurence=False)
-				self.__belief_seen_slots[slot][value] = self.__belief[slot][value]
-			except KeyError:
-				raise Exception(
-					"The value [{}] of the slot [{}] on the dialogue act [{}] is not specified in the initial belief".format(value, slot, dialogue_act)
-				)
-
-
-
-	"""
-	Class private method.
-
-	Description: 
-
-	Inputs:
-		- 
-
-	Outputs:
-		- 
-	"""
-	def __apply_affirm_rule(self, dialogue_act, slot_value_pairs):
-		if DialogueStateTracking.__dialogue_act_type_is(dialogue_act, d_type='affirm'):
-			
-			rospy.logdebug("Applying affirm rule to {}".format(dialogue_act))
-
-			for slot in list(slot_value_pairs.keys()):
-				if not self.__slot_value_is(slot_value_pairs[slot], value='none'):
-					value = slot_value_pairs[slot]
-					prob = dialogue_act['probability']
-					try:
-						self.__belief[slot][value] = self.__update_probability(self.__belief[slot][value], prob, occurence=True)
-						self.__belief_seen_slots[slot][value] = self.__belief[slot][value]
-					except KeyError:
-						raise Exception(
-							"The value [{}] of the slot [{}] on the dialogue act [{}] is not specified in the initial belief".format(value, slot, dialogue_act)
-						)
-
-
-
-
-	"""
-	Class private method.
-
-	Description: 
-
-	Inputs:
-		- 
-
-	Outputs:
-		- 
-	"""
-	def __apply_negate_rule(self, dialogue_act, slot_value_pairs):
-		if DialogueStateTracking.__dialogue_act_type_is(dialogue_act, d_type='negate'):
-			
-			rospy.logdebug("Applying negate rule to {}".format(dialogue_act))
-
-			for slot in list(slot_value_pairs.keys()):
-				if not self.__slot_value_is(slot_value_pairs[slot], value='none'):
-					value = slot_value_pairs[slot]
-					prob = dialogue_act['probability']
-					try:
-						self.__belief[slot][value] = self.__update_probability(self.__belief[slot][value], prob, occurence=False)
-						self.__belief_seen_slots[slot][value] = self.__belief[slot][value]
-					except KeyError:
-						raise Exception(
-							"The value [{}] of the slot [{}] on the dialogue act [{}] is not specified in the initial belief".format(value, slot, dialogue_act)
-						)
-
-
-
-
-	"""
-	Class private method.
-
-	Description: 
-
-	Inputs:
-		- 
-
-	Outputs:
-		- 
-	"""
-	def __apply_rules(self, d_acts, last_system_response):
-		for d_act in d_acts:
-			try:
-				self.__apply_inform_rule(d_act)
-				self.__apply_deny_rule(d_act)
-				self.__apply_affirm_rule(d_act, last_system_response['slots'])
-				self.__apply_negate_rule(d_act, last_system_response['slots'])
-			except Exception:
-				rospy.logwarn("Error applying rules to {}".format(d_act))
-				rospy.logdebug(traceback.format_exc())
-				continue
-
-
-
-
-	"""
-	Class property.
-
-	Description: 
-
-	Outputs:
-		- return the belief of the dialogue without slots with null probability.
-	"""
 	@property
 	def belief(self):
-		return self.__belief_seen_slots
+		return self.__belief
 
-
-	"""
-	Class property.
-
-	Description: 
-	
-	Outputs:
-		- return the initial belief.
-	"""
-	@property
-	def initial_belief(self):
-		return self.__initial_belief
-	
-
-	"""
-	Class property.
-
-	Description: 
-	
-	Outputs:
-		- return the possible slots of the dialogue.
-	"""
-	@property
-	def slots(self):
-		return self.__slots
 
 if __name__ == '__main__':
 
-	with open('onthology.json', 'r') as fp:
-		onthology_dict = json.load(fp)
+	dst_object = DialogueStateTracking()
 
-	slots = ['intent', 'person', 'object', 'source', 'destination']
-	#slots = ['intent', 'person', 'object', 'source']
+	num_d_acts = 4
+	prob = 1/num_d_acts
+	dialogue_acts = [
+		DialogueAct(
+			dtype="inform",
+			slots=[
+				Slot(type="intent", value="take", confidence=0.991*prob),
+				Slot(type="object", value="book", confidence=0.982*prob)
+			],
+			confidence=0.997*prob
+		),
+		DialogueAct(
+			dtype="inform",
+			slots=[
+				Slot(type="intent", value="take", confidence=0.996*prob),
+				Slot(type="object", value="book", confidence=0.982 * prob),
+				Slot(type="source", value="table", confidence=0.962*prob)
+			],
+			confidence=0.997*prob
+		),
+		DialogueAct(
+			dtype="inform",
+			slots=[
+				Slot(type="intent", value="take", confidence=0.996 * prob),
+				Slot(type="object", value="book", confidence=0.982 * prob),
+			],
+			confidence=0.997 * prob
+		),
+		DialogueAct(
+			dtype="inform",
+			slots=[
+				Slot(type="intent", value="take", confidence=0.996 * prob),
+			],
+			confidence=0.997 * prob
+		)
+	]
 
-	belief = {slot: {value: 0.0 for value in onthology_dict[slot] } for slot in slots }
+	system_response = DialogueAct(
+		dtype="hello",
+		slots=[]
+	)
 
-	dst_object = DialogueStateTracking(slots=slots, initial_belief=belief)
+	dst_object.update_belief(dialogue_acts, last_system_response=system_response)
+	print(json.dumps(dst_object.belief.as_dict(), indent=4))
+
+	num_d_acts = 4
+	prob = 1 / num_d_acts
+	dialogue_acts = [
+		DialogueAct(
+			dtype="affirm",
+			slots=[],
+			confidence=0.997 * prob
+		),
+		DialogueAct(
+			dtype="affirm",
+			slots=[],
+			confidence=0.997 * prob
+		),
+		DialogueAct(
+			dtype="inform",
+			slots=[],
+			confidence=0.997 * prob
+		),
+		DialogueAct(
+			dtype="inform",
+			slots=[],
+			confidence=0.997 * prob
+		)
+	]
+
+	system_response = DialogueAct(
+		dtype="confirm",
+		slots=[
+			Slot(type="intent", value="take"),
+			Slot(type="object", value="book"),
+			Slot(type="source", value="table")
+		])
+
+	dst_object.update_belief(dialogue_acts, last_system_response=system_response)
+	print(json.dumps(dst_object.belief.as_dict(), indent=4))
+
