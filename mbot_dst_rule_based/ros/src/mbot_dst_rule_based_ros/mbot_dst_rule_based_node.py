@@ -53,6 +53,7 @@ class DSTNode(object):
 		d_acts_topic 	= rospy.get_param('~dialogue_acts_topic_name', '/dialogue_acts')
 		system_response = rospy.get_param('~system_response_topic_name', '/system_response')
 		onthology_name 	= rospy.get_param('~onthology_full_name', 'ros/src/mbot_dst_rule_based_ros/onthology.json')
+		restart_threshold = rospy.get_param('~restart_threshold', 0.1)
 
 		# initializes the node (if debug, initializes in debug mode)
 		if debug == True:
@@ -70,6 +71,7 @@ class DSTNode(object):
 		rospy.set_param('~dialogue_acts_topic_name', d_acts_topic)
 		rospy.set_param('~system_response_topic_name', system_response)
 		rospy.set_param('~onthology_full_name', onthology_name)
+		rospy.set_param('~restart_threshold', restart_threshold)
 
 		rospy.logdebug('=== NODE PRIVATE PARAMETERS ============')
 		logdebug_param(rospy.get_param(node_name))
@@ -89,22 +91,12 @@ class DSTNode(object):
 		"""
 
 		#self.dst_object = DialogueStateTracking(slots=slots, initial_belief=belief)
-		self.dst_object = DialogueStateTracking()
+		self.dst_object = DialogueStateTracking(restart_threshold=restart_threshold)
 		rospy.loginfo('dialogue state tracking object created')
 
 		self.dst_request_received = False
 		self.loop_rate = rospy.Rate(rate)
-		self.last_system_response = {
-					"d-type": "hello",
-					"slots": {
-						"intent": "none",
-						"object": "none",
-						"person": "none",
-						"source": "none",
-						"destination": "none"
-					},
-					"requestable": []
-				}
+		self.last_system_response = None
 
 		rospy.Subscriber(d_acts_topic, DialogActArray, self.dstCallback, queue_size=1)
 		rospy.loginfo("subscribed to topic %s", d_acts_topic)
@@ -179,7 +171,7 @@ class DSTNode(object):
 				self.dst_object.update_belief(dialogue_acts, self.last_system_response, normalize=False)
 				rospy.loginfo('belief: {}'.format(self.dst_object.belief.as_dict()))
 
-				allow_slots = ["object"]
+				allow_slots = ["intent", "object", "person", "source", "destination"]
 
 				dialogue_state = DialogState()
 				dialogue_state.slots.extend([

@@ -86,12 +86,14 @@ class DialogueStateTracking(object):
 		- belief: the current belief of the dialogue.
 		- belief_not_null: the current belief of the dialogue without slots-value pairs that have zero probability.
 	"""
-	def __init__(self):
+	def __init__(self, restart_threshold=0.2):
 
 		rospy.logdebug("Initializing DialogueStateTracking object")
 		self.__initial_belief = Belief()
 		self.__belief = None
 		self.initialize_belief()
+
+		self.restart_threshold = restart_threshold
 
 	# CHECKED
 	def split(self, dialogue_acts):
@@ -211,7 +213,7 @@ class DialogueStateTracking(object):
 	def __apply_restart_rule(self, dialogue_act):
 
 		if DialogueStateTracking.__dialogue_act_type_is(dialogue_act, d_type='restart'):
-			if dialogue_act.confidence >= 0.5:
+			if dialogue_act.confidence >= self.restart_threshold:
 				rospy.logdebug("Applying restart rule to {}".format(dialogue_act.as_dict()))
 				self.initialize_belief()
 				raise Exception("Restarting Belief")
