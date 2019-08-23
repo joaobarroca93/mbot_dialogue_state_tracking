@@ -6,7 +6,7 @@ import rospkg
 import json
 import os
 
-#from std_msgs.msg import int32 # TURN NUMBER !!
+from std_msgs.msg import String
 from mbot_dst_rule_based.msg import DialogState
 #from mbot_dst_rule_based.mbot_dst_rule_based_common_v2 import DialogueStateTracking
 from mbot_dst_rule_based.mbot_dst_rule_based_common import DialogueAct as MbotDialogueAct
@@ -95,6 +95,7 @@ class DSTNode(object):
 		rospy.loginfo('dialogue state tracking object created')
 
 		self.dst_request_received = False
+		self.dialogue_status_received = False
 		self.loop_rate = rospy.Rate(rate)
 		self.last_system_response = None
 
@@ -103,6 +104,10 @@ class DSTNode(object):
 
 		rospy.Subscriber(system_response, DialogAct, self.systemResponseCallback, queue_size=1)
 		rospy.loginfo("subscribed to topic %s", system_response)
+
+		dialogue_status = "/dialogue_status"
+		rospy.Subscriber(dialogue_status, String, self.dialogueStatusCallback, queue_size=1)
+		rospy.loginfo("subscribed to topic %s", dialogue_status)
 
 		self.pub_dialogue_state = rospy.Publisher(d_state_topic, DialogState, queue_size=1)
 		
@@ -129,6 +134,12 @@ class DSTNode(object):
 				MbotSlot(type=slot.slot, value=slot.value)
 			for slot in dialogue_act_msg.slots]
 		)
+
+	def dialogueStatusCallback(self, dialogue_status_msg):
+
+		if dialogue_status_msg.data == "finish":
+			self.dst_object.initialize_belief()
+			self.dialogue_status_received = True
 
 
 	def begin(self):
@@ -183,6 +194,21 @@ class DSTNode(object):
 					) for slot in self.dst_object.belief.slots if slot.type in allow_slots]
 				)
 
+				self.pub_dialogue_state.publish(dialogue_state)
+
+			if self.dialogue_status_received:
+
+				self.dialogue_status_received = False
+
+				dialogue_state = DialogState()
+				dialogue_state.slots.extend([
+					InformSlot(
+						slot=slot.type,
+						value=slot.value,
+						confidence=slot.confidence,
+						known=True
+					) for slot in self.dst_object.belief.slots if slot.type in allow_slots]
+				)
 				self.pub_dialogue_state.publish(dialogue_state)
 				
 
