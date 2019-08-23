@@ -161,17 +161,9 @@ class DSTNode(object):
 							type=slot.slot,
 							value=slot.value,
 							confidence=slot.confidence
-						) for slot in dialogue_act.slots if slot.known == True]
+						) for slot in dialogue_act.slots] #if slot.known == True]
 					)
 				for dialogue_act in self.dialogue_acts ]
-
-				"""
-				dialogue_acts = [{
-					"d-type": dialogue_act.dtype,
-					"slots": { slot.slot: {'value': slot.value, 'probability': slot.confidence}  for slot in dialogue_act.slots if slot.known == True},
-					"probability": dialogue_act.d_type_confidence
-				} for dialogue_act in self.dialogue_acts ]
-				"""
 
 				rospy.logdebug('dialogue_acts_dict: {}'.format(
 					[dialogue_act.as_dict() for dialogue_act in dialogue_acts]
