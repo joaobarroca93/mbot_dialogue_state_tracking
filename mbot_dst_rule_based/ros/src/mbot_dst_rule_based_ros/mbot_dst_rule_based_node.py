@@ -161,7 +161,7 @@ class DSTNode(object):
 							type=slot.slot,
 							value=slot.value,
 							confidence=slot.confidence
-						) for slot in dialogue_act.slots] #if slot.known == True]
+						) for slot in dialogue_act.slots if slot.known == True]
 					)
 				for dialogue_act in self.dialogue_acts ]
 
