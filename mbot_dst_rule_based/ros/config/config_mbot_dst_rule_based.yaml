@@ -1,1 +1,16 @@
-# TODO!!
+#======================================================================================
+# configuration file for DST node
+# all the directories are set from the package main path !!
+#======================================================================================
+#===================
+# NODE PARAMETERS
+#===================
+node_params:
+  name: "dialogue_state_tracking"
+  rate: 10.0
+  debug: False
+  restart_threshold: 0.1
+  d_state_topic: "dialogue_state"
+  d_acts_topic: "dialogue_acts"
+  system_response_topic: "system_response"
+  dialogue_status_topic: "dialogue_status"

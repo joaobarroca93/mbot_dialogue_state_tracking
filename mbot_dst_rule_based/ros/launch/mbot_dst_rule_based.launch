@@ -3,7 +3,8 @@
 
  <!-- small description about your node -->
  
- <node pkg="my_package_name" type="my_node_name" name="my_node_name"
- respawn="false" output="screen" args="$(find mbot_dst_rule_based_name)/ros/config/my_arg_file.yaml"/>
+ <node pkg="mbot_dst_rule_based" type="mbot_dst_rule_based_node" name="dst"
+ respawn="false" output="screen"
+ args="$(find mbot_dst_rule_based)/ros/config/config_mbot_dst_rule_based.yaml"/>
 
 </launch>

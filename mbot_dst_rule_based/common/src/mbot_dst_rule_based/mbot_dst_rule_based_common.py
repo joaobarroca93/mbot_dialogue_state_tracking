@@ -71,22 +71,7 @@ class Belief(object):
 
 class DialogueStateTracking(object):
 
-	"""
-	Class constructor.
-
-	Desciption: Creates an instance of the DialogueStateTracking class.
-
-	Inputs:
-		- slots [list]: the possible slots the dialogue can have.
-		- initial_belief [dict]: the initial belief of the dialogue.
-
-	Objects:
-		- slots: the possible slots the dialogue can have.
-		- initial_belief the initial belief of the dialogue.
-		- belief: the current belief of the dialogue.
-		- belief_not_null: the current belief of the dialogue without slots-value pairs that have zero probability.
-	"""
-	def __init__(self, restart_threshold=0.2):
+	def __init__(self, restart_threshold=0.1):
 
 		rospy.logdebug("Initializing DialogueStateTracking object")
 		self.__initial_belief = Belief()

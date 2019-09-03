@@ -5,10 +5,10 @@ import rospkg
 
 import json
 import os
+import yaml
 
 from std_msgs.msg import String
 from mbot_dst_rule_based.msg import DialogState
-#from mbot_dst_rule_based.mbot_dst_rule_based_common_v2 import DialogueStateTracking
 from mbot_dst_rule_based.mbot_dst_rule_based_common import DialogueAct as MbotDialogueAct
 from mbot_dst_rule_based.mbot_dst_rule_based_common import Slot as MbotSlot
 from mbot_dst_rule_based.mbot_dst_rule_based_common import DialogueStateTracking
@@ -18,42 +18,31 @@ from mbot_nlu_pytorch.msg import (InformSlot, DialogAct,
 								ASRNBestList)
 
 
-# parameters 
-# '~loop_rate'
-# '~node_name'
-# '~slots'
-# '~dialogue_acts_topic_name'
-# '~belief_topic_name'
-# '~onthology_full_name'
-
-# NEED TO ADD A SUB TOPIC TO INDICATE THE TURN NUMBER !!!
-
-
-
-"""
-Description: This function helps logging parameters as debug verbosity messages.
-
-Inputs:
-	- param_dict: a dictionary whose keys are the parameter's names and values the parameter's values.
-"""
-def logdebug_param(param_dict):
-	[ rospy.logdebug( '{:<20}\t{}'.format(param[0], param[1]) ) for param in param_dict.items() ]
-
-
-
 class DSTNode(object):
 
-	def __init__(self, debug=False):
+	def __init__(self):
 
-		# get useful parameters, and if any of them doesn't exist, use the default value
-		rate 			= rospy.get_param('~loop_rate', 10.0)
-		slots 			= rospy.get_param('~slots', ['intent', 'person', 'object', 'source', 'destination'])
-		node_name 		= rospy.get_param('~node_name', 'dialogue_state_tracking')
-		d_state_topic 	= rospy.get_param('~d_state_topic_name', '/dialogue_state')
-		d_acts_topic 	= rospy.get_param('~dialogue_acts_topic_name', '/dialogue_acts')
-		system_response = rospy.get_param('~system_response_topic_name', '/system_response')
-		onthology_name 	= rospy.get_param('~onthology_full_name', 'ros/src/mbot_dst_rule_based_ros/onthology.json')
-		restart_threshold = rospy.get_param('~restart_threshold', 0.1)
+		rospack = rospkg.RosPack()
+		generic_path = rospack.get_path("mbot_dst_rule_based")
+
+		try:
+			# need to download a .yaml config with all the needed parameters !
+			rospy.loginfo("Loading node config")
+			config_path = rospy.myargv()[1]
+			config = yaml.load(open(config_path))
+		except IndexError:
+			rospy.loginfo("Loading node config")
+			config_path = os.path.join(generic_path, "ros/config/config_mbot_dst_rule_based.yaml")
+			config = yaml.load(open(config_path))
+
+		node_name 				= config["node_params"]["name"]
+		rate 					= config["node_params"]["rate"]
+		debug 					= config["node_params"]["debug"]
+		restart_threshold 		= config["node_params"]["restart_threshold"]
+		d_state_topic 			= config["node_params"]["d_state_topic"]
+		d_acts_topic 			= config["node_params"]["d_acts_topic"]
+		dialogue_status_topic	= config["node_params"]["dialogue_status_topic"]
+		system_response_topic 	= config["node_params"]["system_response_topic"]
 
 		# initializes the node (if debug, initializes in debug mode)
 		if debug == True:
@@ -63,34 +52,7 @@ class DSTNode(object):
 			rospy.init_node(node_name, anonymous=False)
 			rospy.loginfo("%s node created" % node_name)
 
-		# set parameters to make sure all parameters are set to the parameter server
-		rospy.set_param('~loop_rate', rate)
-		rospy.set_param('~slots', slots)
-		rospy.set_param('~node_name', node_name)
-		rospy.set_param('~d_state_topic_name', d_state_topic)
-		rospy.set_param('~dialogue_acts_topic_name', d_acts_topic)
-		rospy.set_param('~system_response_topic_name', system_response)
-		rospy.set_param('~onthology_full_name', onthology_name)
-		rospy.set_param('~restart_threshold', restart_threshold)
 
-		rospy.logdebug('=== NODE PRIVATE PARAMETERS ============')
-		logdebug_param(rospy.get_param(node_name))
-
-		rospack = rospkg.RosPack()
-		# get useful paths
-		generic_path 	= rospack.get_path("mbot_dst_rule_based")
-		onthology_path 	= os.path.join(generic_path, onthology_name)
-		logdebug_param({'generic_path': generic_path, 'onthology_full_path': onthology_path})
-
-		"""
-		with open(onthology_path, 'r') as fp:
-			onthology_dict = json.load(fp)
-		belief = {slot: {value: 0.0 for value in onthology_dict[slot] } for slot in slots }
-		rospy.logdebug('=== DIALOGUE INITIAL BELIEF ============')
-		rospy.logdebug(belief)
-		"""
-
-		#self.dst_object = DialogueStateTracking(slots=slots, initial_belief=belief)
 		self.dst_object = DialogueStateTracking(restart_threshold=restart_threshold)
 		rospy.loginfo('dialogue state tracking object created')
 
@@ -102,12 +64,11 @@ class DSTNode(object):
 		rospy.Subscriber(d_acts_topic, DialogActArray, self.dstCallback, queue_size=1)
 		rospy.loginfo("subscribed to topic %s", d_acts_topic)
 
-		rospy.Subscriber(system_response, DialogAct, self.systemResponseCallback, queue_size=1)
-		rospy.loginfo("subscribed to topic %s", system_response)
+		rospy.Subscriber(system_response_topic, DialogAct, self.systemResponseCallback, queue_size=1)
+		rospy.loginfo("subscribed to topic %s", system_response_topic)
 
-		dialogue_status = "/dialogue_status"
-		rospy.Subscriber(dialogue_status, String, self.dialogueStatusCallback, queue_size=1)
-		rospy.loginfo("subscribed to topic %s", dialogue_status)
+		rospy.Subscriber(dialogue_status_topic, String, self.dialogueStatusCallback, queue_size=1)
+		rospy.loginfo("subscribed to topic %s", dialogue_status_topic)
 
 		self.pub_dialogue_state = rospy.Publisher(d_state_topic, DialogState, queue_size=1)
 		
@@ -143,8 +104,6 @@ class DSTNode(object):
 
 
 	def begin(self):
-
-		THRESHOLD = 0.1
 
 		while not rospy.is_shutdown():
 
@@ -209,5 +168,5 @@ class DSTNode(object):
 
 def main():
 
-	dst_node = DSTNode(debug=True)
+	dst_node = DSTNode()
 	dst_node.begin()
